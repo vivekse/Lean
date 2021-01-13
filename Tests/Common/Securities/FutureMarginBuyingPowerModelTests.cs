@@ -266,6 +266,7 @@ namespace QuantConnect.Tests.Common.Securities
             futureSecurity.BuyingPowerModel = GetModel(futureSecurity, out futureMarginModel);
             futureSecurity.Holdings.SetHoldings(20, 100);
             Update(futureSecurity, 20, algorithm);
+            algorithm.Portfolio.Positions.ResolvePositionGroups();
 
             var marginUsed = algorithm.Portfolio.TotalMarginUsed;
             Assert.IsTrue(marginUsed > 0);
@@ -297,6 +298,7 @@ namespace QuantConnect.Tests.Common.Securities
             futureSecurity.BuyingPowerModel = GetModel(futureSecurity, out futureMarginModel);
             futureSecurity.Holdings.SetHoldings(20, 100);
             Update(futureSecurity, 20, algorithm);
+            algorithm.Portfolio.Positions.ResolvePositionGroups();
 
             var marginUsed = algorithm.Portfolio.TotalMarginUsed;
             Assert.IsTrue(marginUsed > 0);
@@ -549,6 +551,7 @@ namespace QuantConnect.Tests.Common.Securities
             // set closed market for simpler math
             futureSecurity.Exchange.SetLocalDateTimeFrontier(new DateTime(2020, 2, 1));
             futureSecurity.Holdings.SetHoldings(100, 10 * -1 * Math.Sign(target));
+            algorithm.Portfolio.Positions.ResolvePositionGroups();
             Update(futureSecurity, 100, algorithm);
 
             var model = GetModel(futureSecurity, out futureMarginModel);

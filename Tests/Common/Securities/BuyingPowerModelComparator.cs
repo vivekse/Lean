@@ -14,6 +14,7 @@
 */
 
 using System;
+using System.Reflection;
 using NUnit.Framework;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
@@ -30,6 +31,8 @@ namespace QuantConnect.Tests.Common.Securities
         public SecurityPortfolioManager Portfolio { get; }
         public IBuyingPowerModel SecurityModel { get; }
         public IPositionGroupBuyingPowerModel PositionGroupModel { get; }
+
+        private bool reentry;
 
         public BuyingPowerModelComparator(
             IBuyingPowerModel securityModel,
@@ -63,14 +66,21 @@ namespace QuantConnect.Tests.Common.Securities
         {
             EnsureSecurityExists(parameters.Security);
             var expected = SecurityModel.GetMaintenanceMargin(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
             var actual = PositionGroupModel.GetMaintenanceMargin(new PositionGroupMaintenanceMarginParameters(
-                Portfolio, new PositionGroup(PositionGroupModel, new Position(parameters.Security)), true
+                Portfolio, new PositionGroup(PositionGroupModel, new Position(parameters.Security, parameters.Quantity)), true
             ));
 
             Assert.AreEqual(expected.Value, actual.Value,
                 $"{PositionGroupModel.GetType().Name}:{nameof(GetMaintenanceMargin)}"
             );
 
+            reentry = false;
             return expected;
         }
 
@@ -78,29 +88,43 @@ namespace QuantConnect.Tests.Common.Securities
         {
             EnsureSecurityExists(parameters.Security);
             var expected = SecurityModel.GetInitialMarginRequirement(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
             var actual = PositionGroupModel.GetInitialMarginRequirement(new PositionGroupInitialMarginParameters(
-                Portfolio, new PositionGroup(PositionGroupModel, new Position(parameters.Security))
+                Portfolio, new PositionGroup(PositionGroupModel, new Position(parameters.Security, parameters.Quantity))
             ));
 
             Assert.AreEqual(expected.Value, actual.Value,
                 $"{PositionGroupModel.GetType().Name}:{nameof(GetInitialMarginRequirement)}"
             );
 
+            reentry = false;
             return expected;
         }
 
         public InitialMargin GetInitialMarginRequiredForOrder(InitialMarginRequiredForOrderParameters parameters)
         {
+            reentry = true;
             EnsureSecurityExists(parameters.Security);
             var expected = SecurityModel.GetInitialMarginRequiredForOrder(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
             var actual = PositionGroupModel.GetInitialMarginRequiredForOrder(new PositionGroupInitialMarginForOrderParameters(
-                Portfolio, new PositionGroup(PositionGroupModel, new Position(parameters.Security)), parameters.Order
+                Portfolio, new PositionGroup(PositionGroupModel, new Position(parameters.Security, parameters.Order.Quantity)), parameters.Order
             ));
 
             Assert.AreEqual(expected.Value, actual.Value,
                 $"{PositionGroupModel.GetType().Name}:{nameof(GetInitialMarginRequiredForOrder)}"
             );
 
+            reentry = false;
             return expected;
         }
 
@@ -109,7 +133,33 @@ namespace QuantConnect.Tests.Common.Securities
             )
         {
             EnsureSecurityExists(parameters.Security);
-            return SecurityModel.HasSufficientBuyingPowerForOrder(parameters);
+            var expected = SecurityModel.HasSufficientBuyingPowerForOrder(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
+            var actual = PositionGroupModel.HasSufficientBuyingPowerForOrder(
+                new HasSufficientPositionGroupBuyingPowerForOrderParameters(
+                    Portfolio,
+                    new PositionGroup(PositionGroupModel, new Position(parameters.Security, parameters.Order.Quantity)),
+                    parameters.Order
+                )
+            );
+
+            Assert.AreEqual(expected.IsSufficient, actual.IsSufficient,
+                $"{PositionGroupModel.GetType().Name}:{nameof(HasSufficientBuyingPowerForOrder)}: " +
+                $"ExpectedReason: {expected.Reason}{Environment.NewLine}" +
+                $"ActualReason: {actual.Reason}"
+            );
+
+            Assert.AreEqual(expected.Reason, actual.Reason,
+                $"{PositionGroupModel.GetType().Name}:{nameof(HasSufficientBuyingPowerForOrder)}"
+            );
+
+            reentry = false;
+            return expected;
         }
 
         public GetMaximumOrderQuantityResult GetMaximumOrderQuantityForTargetBuyingPower(
@@ -117,7 +167,16 @@ namespace QuantConnect.Tests.Common.Securities
             )
         {
             EnsureSecurityExists(parameters.Security);
-            return SecurityModel.GetMaximumOrderQuantityForTargetBuyingPower(parameters);
+            var expected = SecurityModel.GetMaximumOrderQuantityForTargetBuyingPower(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
+
+            reentry = false;
+            return expected;
         }
 
         public GetMaximumOrderQuantityResult GetMaximumOrderQuantityForDeltaBuyingPower(
@@ -125,26 +184,55 @@ namespace QuantConnect.Tests.Common.Securities
             )
         {
             EnsureSecurityExists(parameters.Security);
-            return SecurityModel.GetMaximumOrderQuantityForDeltaBuyingPower(parameters);
+            var expected = SecurityModel.GetMaximumOrderQuantityForDeltaBuyingPower(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
+
+            reentry = false;
+            return expected;
         }
 
         public ReservedBuyingPowerForPosition GetReservedBuyingPowerForPosition(ReservedBuyingPowerForPositionParameters parameters)
         {
             EnsureSecurityExists(parameters.Security);
-            return SecurityModel.GetReservedBuyingPowerForPosition(parameters);
+            var expected = SecurityModel.GetReservedBuyingPowerForPosition(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
+
+            reentry = false;
+            return expected;
         }
 
         public BuyingPower GetBuyingPower(BuyingPowerParameters parameters)
         {
             EnsureSecurityExists(parameters.Security);
-            return SecurityModel.GetBuyingPower(parameters);
+            var expected = SecurityModel.GetBuyingPower(parameters);
+            if (reentry)
+            {
+                return expected;
+            }
+
+            reentry = true;
+
+            reentry = false;
+            return expected;
         }
 
         private void EnsureSecurityExists(Security security)
         {
             if (!Portfolio.Securities.ContainsKey(security.Symbol))
             {
+                var timeKeeper = (LocalTimeKeeper) typeof(Security).GetField("_localTimeKeeper", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(security);
                 Portfolio.Securities[security.Symbol] = security;
+                security.SetLocalTimeKeeper(timeKeeper);
             }
         }
     }

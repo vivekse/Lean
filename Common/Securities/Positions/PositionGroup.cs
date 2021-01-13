@@ -35,6 +35,11 @@ namespace QuantConnect.Securities.Positions
         public PositionGroupKey Key { get; }
 
         /// <summary>
+        /// Gets the whole number of units in this position group
+        /// </summary>
+        public int Quantity { get; }
+
+        /// <summary>
         /// Gets the positions in this group
         /// </summary>
         public IEnumerable<IPosition> Positions => _positions.Values;
@@ -75,6 +80,8 @@ namespace QuantConnect.Securities.Positions
         {
             Key = key;
             _positions = positions;
+            var firstPosition = positions.First();
+            Quantity = (int) (firstPosition.Value.Quantity / firstPosition.Value.UnitQuantity);
         }
 
         /// <summary>
@@ -86,6 +93,13 @@ namespace QuantConnect.Securities.Positions
         public bool TryGetPosition(Symbol symbol, out IPosition position)
         {
             return _positions.TryGetValue(symbol, out position);
+        }
+
+        /// <summary>Returns a string that represents the current object.</summary>
+        /// <returns>A string that represents the current object.</returns>
+        public override string ToString()
+        {
+            return $"{Key}: {Quantity}";
         }
 
         /// <summary>Returns an enumerator that iterates through the collection.</summary>

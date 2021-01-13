@@ -15,6 +15,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using QuantConnect.Util;
 
 namespace QuantConnect.Securities.Positions
@@ -24,6 +26,11 @@ namespace QuantConnect.Securities.Positions
     /// </summary>
     public sealed class PositionGroupKey : IEquatable<PositionGroupKey>
     {
+        /// <summary>
+        /// Gets whether or not this key defines a default group
+        /// </summary>
+        public bool IsDefaultGroup { get; }
+
         /// <summary>
         /// Gets the <see cref="IPositionGroupBuyingPowerModel"/> being used by the group
         /// </summary>
@@ -41,6 +48,7 @@ namespace QuantConnect.Securities.Positions
         /// <param name="security">The security</param>
         public PositionGroupKey(IPositionGroupBuyingPowerModel buyingPowerModel, Security security)
         {
+            IsDefaultGroup = buyingPowerModel.GetType() == typeof(SecurityPositionGroupBuyingPowerModel);
             BuyingPowerModel = buyingPowerModel;
             UnitQuantities = new[]
             {
@@ -56,7 +64,9 @@ namespace QuantConnect.Securities.Positions
         public PositionGroupKey(IPositionGroupBuyingPowerModel buyingPowerModel, IEnumerable<IPosition> positions)
         {
             BuyingPowerModel = buyingPowerModel;
-            UnitQuantities = positions.ToList(p => Tuple.Create(p.Symbol, p.Quantity));
+            // these have to be sorted for determinism
+            UnitQuantities = positions.Select(p => Tuple.Create(p.Symbol, p.UnitQuantity)).ToImmutableSortedSet();
+            IsDefaultGroup = UnitQuantities.Count == 1 && BuyingPowerModel.GetType() == typeof(SecurityPositionGroupBuyingPowerModel);
         }
 
         /// <summary>Indicates whether the current object is equal to another object of the same type.</summary>
@@ -74,8 +84,8 @@ namespace QuantConnect.Securities.Positions
                 return true;
             }
 
-            return UnitQuantities.Equals(other.UnitQuantities)
-                && BuyingPowerModel.Equals(other.BuyingPowerModel);
+            return BuyingPowerModel.Equals(other.BuyingPowerModel)
+                && UnitQuantities.ListEquals(other.UnitQuantities);
         }
 
         /// <summary>Determines whether the specified object is equal to the current object.</summary>
@@ -102,8 +112,15 @@ namespace QuantConnect.Securities.Positions
         {
             unchecked
             {
-                return (BuyingPowerModel.GetHashCode() * 397) ^ UnitQuantities.GetHashCode();
+                return (BuyingPowerModel.GetHashCode() * 397) ^ UnitQuantities.GetListHashCode();
             }
+        }
+
+        /// <summary>Returns a string that represents the current object.</summary>
+        /// <returns>A string that represents the current object.</returns>
+        public override string ToString()
+        {
+            return $"{string.Join("|", UnitQuantities.Select(x => $"{x.Item1}:{x.Item2.Normalize()}"))}";
         }
 
         /// <summary>

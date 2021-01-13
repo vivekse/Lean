@@ -13,6 +13,10 @@
  * limitations under the License.
 */
 
+using System;
+using System.Linq;
+using static QuantConnect.StringExtensions;
+
 namespace QuantConnect.Securities.Positions
 {
     /// <summary>
@@ -83,6 +87,27 @@ namespace QuantConnect.Securities.Positions
             }
 
             return initialMarginRequirement;
+        }
+
+        /// <summary>
+        /// Additionally check initial margin requirements if the algorithm only has default position groups
+        /// </summary>
+        protected override HasSufficientBuyingPowerForOrderResult PassesPositionGroupSpecificBuyingPowerForOrderChecks(
+            HasSufficientPositionGroupBuyingPowerForOrderParameters parameters,
+            decimal availableBuyingPower
+            )
+        {
+            // only check initial margin requirements when the algorithm is only using default position groups
+            if (!parameters.Portfolio.Positions.IsOnlyDefaultGroups)
+            {
+                return null;
+            }
+
+            var symbol = parameters.PositionGroup.Single().Symbol;
+            var security = parameters.Portfolio.Securities[symbol];
+            return security.BuyingPowerModel.HasSufficientBuyingPowerForOrder(
+                parameters.Portfolio, security, parameters.Order
+            );
         }
     }
 }

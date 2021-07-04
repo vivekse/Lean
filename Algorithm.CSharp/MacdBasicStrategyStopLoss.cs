@@ -10,7 +10,7 @@ namespace QuantConnect.Algorithm.CSharp
     /// 1. Buy when Macd crosses over Signal line
     /// 2. Sell when MACD crossed below Signal line
     /// </summary>
-    public class MacdBasicStrategy : QCAlgorithm
+    public class MacdBasicStrategyStopLoss : QCAlgorithm
     {
         private Resolution _resolution = Resolution.Minute;
         private readonly string Ticker = "BBY";

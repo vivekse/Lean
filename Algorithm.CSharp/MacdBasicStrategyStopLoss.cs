@@ -2,6 +2,7 @@ using QuantConnect.Data.Consolidators;
 using QuantConnect.Indicators;
 using QuantConnect.Orders;
 using System;
+using QuantConnect.Data.Market;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -16,6 +17,13 @@ namespace QuantConnect.Algorithm.CSharp
         private readonly string Ticker = "BBY";
         private MovingAverageConvergenceDivergence _macd;
         private OrderTicket CurrentOrder;
+        private OrderTicket StopLoss;
+        private OrderTicket ProfitTarget;
+        private RollingWindow<TradeBar> SwingWindow;
+        private int SwingWindowSize = 20;
+        private decimal SwingHigh;
+        private decimal SwingLow;
+
 
         public override void Initialize()
         {
@@ -35,6 +43,8 @@ namespace QuantConnect.Algorithm.CSharp
             SubscriptionManager.AddConsolidator(Ticker, thirtyMinuteConsolidator);
 
 
+            SwingWindow = new RollingWindow<TradeBar>(SwingWindowSize);
+
             _macd = new MovingAverageConvergenceDivergence(12, 26, 9);
             SetWarmUp(TimeSpan.FromDays(40));
         }
@@ -46,7 +56,7 @@ namespace QuantConnect.Algorithm.CSharp
             if ((tradeBar.EndTime.Hour == 13 && tradeBar.EndTime.Minute > 0) || (tradeBar.EndTime.Hour == 16 && tradeBar.EndTime.Minute == 0))
             {
                 _macd.Update(Time, tradeBar.Close);
-
+                SwingWindow.Add(tradeBar);
                 if (IsWarmingUp)
                 {
                     return;
@@ -61,6 +71,25 @@ namespace QuantConnect.Algorithm.CSharp
                 var currentPrice = tradeBar.Close;
                 var holding = Portfolio[Ticker];
 
+                // Reset Swing High and Low
+                SwingHigh = SwingWindow[0].High;
+                SwingLow = SwingWindow[0].Low;
+
+
+                // Calculate Swing High and Low based on current rolling window
+                for (var i = 0; i < SwingWindowSize; i++)
+                {
+                    if (SwingWindow[i].High > SwingHigh)
+                    {
+                        SwingHigh = SwingWindow[i].High;
+                    }
+
+                    if (SwingWindow[i].Low < SwingLow)
+                    {
+                        SwingLow = SwingWindow[i].Low;
+                    }
+                }
+
                 // If position not open and MACD crossed over signal
                 if (holding.Quantity == 0 && _macd > _macd.Signal)
                 {
@@ -68,6 +97,14 @@ namespace QuantConnect.Algorithm.CSharp
                     CurrentOrder = MarketOrder(Ticker, quantity);
                     Debug(
                         $"BUY Time: {Time}, {Ticker} Close:{Securities[Ticker].Close}, MACD: {_macd}, Signal: {_macd.Signal}");
+
+                    var stopLoss = CalculateLongStopLoss(currentPrice, 1);
+
+                    // Set Stop Loss Order
+                    StopLoss = StopMarketOrder(Ticker, -quantity, stopLoss);
+
+
+
                 }
 
                 // If position is open and Signal line crosses over MACD, Liquidate
@@ -78,6 +115,42 @@ namespace QuantConnect.Algorithm.CSharp
                         $"Liquidate Time: {Time}, {Ticker} Close:{Securities[Ticker].Close}, MACD: {_macd}, Signal: {_macd.Signal}");
                 }
             }
+        }
+
+        private decimal CalculateLongStopLoss(decimal swingLow, decimal percentBelowSwingLow)
+        {
+            return swingLow - swingLow * percentBelowSwingLow / 100;
+        }
+
+        private decimal CalculateShortStopLoss(decimal swingHigh, decimal percentAboveSwingLow)
+        {
+            return swingHigh + swingHigh * percentAboveSwingLow / 100;
+        }
+
+        private decimal CalculateLongStopLoss(decimal currentPrice, decimal swingLow, decimal maxStopLossPercent, decimal minStopLossPercent)
+        {
+            if ((currentPrice - swingLow) * 100 / currentPrice > maxStopLossPercent)
+            {
+                return currentPrice - (currentPrice * maxStopLossPercent / 100);
+            }
+            else if ((currentPrice - swingLow) * 100 / currentPrice < minStopLossPercent)
+            {
+                return currentPrice - (currentPrice * minStopLossPercent / 100);
+            }
+            return swingLow;
+        }
+
+        private decimal CalculateShortStopLoss(decimal currentPrice, decimal swingHigh, decimal maxStopLossPercent, decimal minStopLossPercent)
+        {
+            if ((swingHigh - currentPrice) * 100 / currentPrice > maxStopLossPercent)
+            {
+                return currentPrice + (currentPrice * maxStopLossPercent / 100);
+            }
+            if ((swingHigh - currentPrice) * 100 / currentPrice < minStopLossPercent)
+            {
+                return currentPrice + (currentPrice * minStopLossPercent / 100);
+            }
+            return swingHigh;
         }
     }
 }
